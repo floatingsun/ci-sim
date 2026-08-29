@@ -1,0 +1,11 @@
+[project]
+name = "ci-sim"
+version = "0.1.0"
+description = "Contextual-integrity workplace simulation"
+requires-python = ">=3.12"
+dependencies = [
+    "fire>=0.7,<1",
+    "pydantic>=2,<3",
+    "river-client>=0.6,<1",
+]
+
