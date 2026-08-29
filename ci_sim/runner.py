@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import asyncio
+from collections.abc import Callable, Iterable
 from typing import Literal
 
 from ci_sim.agent import Agent, TranscriptEvent
@@ -31,7 +32,7 @@ class Runner:
         self._agent = agent
         self._max_tool_rounds = max_tool_rounds
 
-    async def run(self, spec: RuntimeSpec, *, seed: int = 0) -> RunResult:
+    async def run_single(self, spec: RuntimeSpec, *, seed: int = 0) -> RunResult:
         environment = self._environment_builder(spec)
         agent_state = self._agent.get_init_state(spec)
         events: list[TranscriptEvent] = []
@@ -60,3 +61,22 @@ class Runner:
             artifact=environment.artifact(),
             termination_reason="max_tool_rounds",
         )
+
+    async def run(
+        self,
+        specs: Iterable[RuntimeSpec],
+        *,
+        seed: int = 0,
+        concurrency: int = 1,
+    ) -> tuple[RunResult, ...]:
+        """Run scenarios concurrently and return results in input order."""
+        if concurrency < 1:
+            raise ValueError("concurrency must be positive")
+
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def run_one(spec: RuntimeSpec) -> RunResult:
+            async with semaphore:
+                return await self.run_single(spec, seed=seed)
+
+        return tuple(await asyncio.gather(*(run_one(spec) for spec in specs)))
