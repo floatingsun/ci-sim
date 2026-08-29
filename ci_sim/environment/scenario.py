@@ -26,6 +26,7 @@ class TextMatchRule(StrictModel):
     contains: tuple[str, ...]
     mode: Literal["all", "any"] = "any"
     reason: str
+    violation_types: tuple[str, ...] = ()
 
 
 class ExpectedWrite(StrictModel):
@@ -42,6 +43,7 @@ class ExpectedWrite(StrictModel):
 class ViolationType(StrictModel):
     type: str
     justification: str
+    kind: Literal["contextual_integrity", "task"] = "contextual_integrity"
 
 
 class EvaluationSpec(StrictModel):
