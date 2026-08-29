@@ -1,13 +1,13 @@
-"""Model adapter and simulation-loop boundaries."""
+"""Simulation loop coordinating an agent with an environment."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Literal
 
-from sim_env.agent import Agent, TranscriptEvent
-
-from .contracts import RunArtifact, RuntimeSpec, SimEnvironment, StrictModel, ToolResult
+from ci_sim.agent import Agent, TranscriptEvent
+from ci_sim.contracts import RunArtifact, RuntimeSpec, StrictModel, ToolResult
+from ci_sim.environment import Environment
 
 
 class RunResult(StrictModel):
@@ -17,10 +17,10 @@ class RunResult(StrictModel):
     termination_reason: Literal["completed", "max_tool_rounds"]
 
 
-class SimulationRunner:
+class Runner:
     def __init__(
         self,
-        environment_builder: Callable[[RuntimeSpec], SimEnvironment],
+        environment_builder: Callable[[RuntimeSpec], Environment],
         agent: Agent,
         *,
         max_tool_rounds: int = 6,

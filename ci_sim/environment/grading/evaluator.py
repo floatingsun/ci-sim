@@ -6,7 +6,8 @@ from typing import Literal
 
 from pydantic import Field, computed_field
 
-from ..contracts import RunArtifact, StrictModel
+from ci_sim.contracts import RunArtifact, StrictModel
+
 from ..scenario import EvaluationSpec
 from .text_matching import evaluate_text_rule
 

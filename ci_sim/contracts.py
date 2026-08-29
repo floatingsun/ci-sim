@@ -1,8 +1,8 @@
-"""Core data exchanged between the runner, model, environment, and grader."""
+"""Core data exchanged between runners, agents, environments, and graders."""
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -48,9 +48,3 @@ class RuntimeSpec(StrictModel):
     system: str
     user: str
     tools: tuple[ToolDefinition, ...]
-
-
-class SimEnvironment(Protocol):
-    def execute(self, call: ToolCall) -> ToolResult: ...
-
-    def artifact(self) -> RunArtifact: ...

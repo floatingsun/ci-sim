@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import Field
 
-from ..contracts import StrictModel
+from ci_sim.contracts import StrictModel
 
 
 class GmailSendArgs(StrictModel):

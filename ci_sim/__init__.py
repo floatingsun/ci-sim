@@ -1,21 +1,20 @@
-"""Interfaces for the workplace contextual-integrity simulation."""
+"""Public interfaces for the simulation framework."""
 
 from .contracts import (
     RunArtifact,
     RuntimeSpec,
-    SimEnvironment,
     ToolCall,
     ToolDefinition,
     ToolResult,
     WriteRecord,
 )
-from .scenario import Scenario
+from .runner import Runner, RunResult
 
 __all__ = [
     "RunArtifact",
+    "RunResult",
+    "Runner",
     "RuntimeSpec",
-    "Scenario",
-    "SimEnvironment",
     "ToolCall",
     "ToolDefinition",
     "ToolResult",

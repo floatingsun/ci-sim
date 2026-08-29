@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pydantic import ValidationError
 
-from ..contracts import StrictModel
+from ci_sim.contracts import StrictModel
+
 from ..scenario import Scenario
 from ..workplace.tools import TOOLS_BY_CANONICAL_NAME, TOOLS_BY_MODEL_NAME
 from .text_matching import evaluate_text_rule

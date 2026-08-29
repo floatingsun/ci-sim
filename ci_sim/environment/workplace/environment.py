@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from pydantic import ValidationError
 
-from ..contracts import RunArtifact, RuntimeSpec, ToolCall, ToolResult, WriteRecord
+from ci_sim.contracts import (
+    RunArtifact,
+    RuntimeSpec,
+    ToolCall,
+    ToolResult,
+    WriteRecord,
+)
+
 from .tools import TOOLS_BY_MODEL_NAME
 
 

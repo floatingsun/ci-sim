@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from pydantic import Field
 
-from .contracts import RuntimeSpec, StrictModel, ToolDefinition
+from ci_sim.contracts import RuntimeSpec, StrictModel, ToolDefinition
 
 
 class ModelInput(StrictModel):
