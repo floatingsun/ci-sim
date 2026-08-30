@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 from typing import Any, Protocol
+from uuid import uuid4
 
 from ci_sim.contracts import RuntimeSpec, ToolCall, ToolResult
 
@@ -148,12 +149,41 @@ def _tool_result_content(result: ToolResult) -> dict[str, Any]:
 def _agent_turn(response_json: str) -> AgentTurn:
     response = json.loads(response_json)
     message = response["choices"][0]["message"]
+    content = message.get("content")
+    tool_call_payloads = tuple(message.get("tool_calls") or ())
+    if not tool_call_payloads and isinstance(content, str):
+        content, tool_call_payloads = _parse_xml_tool_calls(content)
+
     tool_calls = tuple(
         ToolCall(
-            call_id=call["id"],
+            call_id=call.get("id") or f"xml_call_{uuid4().hex}",
             name=call["function"]["name"],
             arguments=json.loads(call["function"]["arguments"]),
         )
-        for call in message.get("tool_calls") or ()
+        for call in tool_call_payloads
     )
-    return AgentTurn(content=message.get("content"), tool_calls=tool_calls)
+    return AgentTurn(content=content, tool_calls=tool_calls)
+
+
+def _parse_xml_tool_calls(
+    content: str,
+) -> tuple[str | None, tuple[dict[str, Any], ...]]:
+    """Recover XML tool calls when the server returns them as text."""
+
+    from river_client.renderers.qwen3 import parse_qwen_content_blocks
+
+    parsed = parse_qwen_content_blocks(content)
+    if parsed is None:
+        return content, ()
+
+    parts, parsed_calls = parsed
+    tool_calls = tuple(call for call in parsed_calls if "function" in call)
+    if not tool_calls:
+        return content, ()
+
+    visible_content = "".join(
+        part["text"] for part in parts if part["type"] == "text"
+    )
+    if "</think>" in visible_content:
+        visible_content = visible_content.rsplit("</think>", 1)[1]
+    return visible_content.strip() or None, tool_calls

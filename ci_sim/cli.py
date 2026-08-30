@@ -33,14 +33,18 @@ def _default_output_path(
     scenario_id: str,
     model: str,
     *,
+    scenario_group: str,
+    reasoning_effort: str | None,
     runs_dir: str | Path = DEFAULT_RUNS_DIR,
 ) -> Path:
     """Build the conventional path for a saved run result."""
 
     return (
         Path(runs_dir)
-        / _safe_path_component(scenario_id)
-        / f"{_safe_path_component(model)}.json"
+        / _safe_path_component(scenario_group)
+        / _safe_path_component(model)
+        / f"reasoning-{_safe_path_component(reasoning_effort or 'default')}"
+        / f"{_safe_path_component(scenario_id)}.json"
     )
 
 
@@ -90,19 +94,37 @@ def run(
     max_tokens: int = 16_384,
     temperature: float = 0.0,
     timeout: float = 300.0,
+    reasoning_effort: str | None = None,
+    concurrency: int = 4,
+    repetitions: int = 1,
     output: str | None = None,
     runs_dir: str = str(DEFAULT_RUNS_DIR),
 ) -> None:
-    """Run, grade, and save one scenario with a River-hosted model.
+    """Run, grade, and save a scenario file or directory of scenarios.
 
-    Results default to ``runs/<scenario>/<model>.json``. Pass
+    Results default to
+    ``runs/<dataset>/<model>/reasoning-<effort>/<scenario>.json``. Pass
     ``--output`` to choose an exact file path, or ``--runs-dir`` to change the
-    root of the generated path.
+    root of the generated path. Directories run concurrently. With multiple
+    repetitions, results are grouped under ``repetition-<index>`` directories.
     """
 
     import river_client as river
 
-    scenario = Scenario.load(scenario_path)
+    input_path = Path(scenario_path)
+    is_directory = input_path.is_dir()
+    scenario_group = input_path.name if is_directory else input_path.stem
+    scenario_paths = sorted(input_path.glob("*.json")) if is_directory else [input_path]
+    if not scenario_paths:
+        raise ValueError(f"No JSON scenarios found in {input_path}")
+    if repetitions < 1:
+        raise ValueError("--repetitions must be positive")
+    if is_directory and output is not None:
+        raise ValueError("--output can only be used with one scenario file")
+    if repetitions > 1 and output is not None:
+        raise ValueError("--output can only be used with one repetition")
+
+    scenarios = [Scenario.load(path) for path in scenario_paths]
     api_key = os.environ.get("RIVER_API_KEY")
     if not api_key:
         raise RuntimeError("RIVER_API_KEY is not set")
@@ -115,36 +137,63 @@ def run(
             max_tokens=max_tokens,
             temperature=temperature,
             timeout=timeout,
+            reasoning_effort=reasoning_effort,
         )
         runner = Runner(
             build_workplace_environment,
             agent,
             max_tool_rounds=max_tool_rounds,
         )
-        result = asyncio.run(runner.run_single(scenario.runtime_spec()))
+        repetition_results = []
+        for repetition in range(repetitions):
+            results = asyncio.run(
+                runner.run(
+                    (scenario.runtime_spec() for scenario in scenarios),
+                    seed=repetition,
+                    concurrency=concurrency,
+                )
+            )
+            repetition_results.append((repetition, results))
     finally:
         client.close()
 
-    grade = RuleBasedWriteEvaluator().grade(scenario.label, result.artifact)
-    payload = {
-        "scenario_id": scenario.id,
-        "model": model,
-        "result": result.model_dump(mode="json"),
-        "grade": grade.model_dump(mode="json"),
-    }
-    rendered = json.dumps(payload, indent=2)
-    output_path = (
-        Path(output)
-        if output is not None
-        else _default_output_path(
-            scenario.id,
-            model,
-            runs_dir=runs_dir,
-        )
-    )
-    _write_json_atomic(payload, output_path)
-    print(f"Saved result artifact to {output_path}", file=sys.stderr)
-    print(rendered)
+    evaluator = RuleBasedWriteEvaluator()
+    output_paths: list[str] = []
+    for repetition, results in repetition_results:
+        for scenario, result in zip(scenarios, results, strict=True):
+            grade = evaluator.grade(scenario.label, result.artifact)
+            payload = {
+                "scenario_id": scenario.id,
+                "model": model,
+                "reasoning_effort": reasoning_effort,
+                "result": result.model_dump(mode="json"),
+                "grade": grade.model_dump(mode="json"),
+            }
+            if repetitions > 1:
+                payload["repetition"] = repetition
+            output_path = (
+                Path(output)
+                if output is not None
+                else _default_output_path(
+                    scenario.id,
+                    model,
+                    scenario_group=scenario_group,
+                    reasoning_effort=reasoning_effort,
+                    runs_dir=runs_dir,
+                )
+            )
+            if output is None and repetitions > 1:
+                output_path = (
+                    output_path.parent
+                    / f"repetition-{repetition}"
+                    / output_path.name
+                )
+            _write_json_atomic(payload, output_path)
+            print(f"Saved result artifact to {output_path}", file=sys.stderr)
+            output_paths.append(str(output_path))
+
+    rendered = output_paths if is_directory or repetitions > 1 else payload
+    print(json.dumps(rendered, indent=2))
 
 
 def main() -> None:

@@ -19,16 +19,21 @@ from ci_sim.cli import (
 
 
 class ResultArtifactPathTest(unittest.TestCase):
-    def test_default_path_groups_runs_by_scenario_and_model(self) -> None:
+    def test_default_path_includes_dataset_model_and_reasoning_effort(self) -> None:
         path = _default_output_path(
             "gina/status update",
             "Qwen/Qwen3.8 27B",
+            scenario_group="generated-dataset",
+            reasoning_effort="xhigh",
             runs_dir="artifacts",
         )
 
         self.assertEqual(
             path,
-            Path("artifacts/gina-status-update/Qwen-Qwen3.8-27B.json"),
+            Path(
+                "artifacts/generated-dataset/Qwen-Qwen3.8-27B/"
+                "reasoning-xhigh/gina-status-update.json"
+            ),
         )
 
     def test_path_components_cannot_escape_the_runs_directory(self) -> None:
@@ -68,9 +73,11 @@ class ResultArtifactPathTest(unittest.TestCase):
             runtime_spec=lambda: object(),
         )
         load_scenario.return_value = scenario
-        asyncio_run.return_value = SimpleNamespace(
-            artifact=object(),
-            model_dump=lambda **_: {"termination_reason": "completed"},
+        asyncio_run.return_value = (
+            SimpleNamespace(
+                artifact=object(),
+                model_dump=lambda **_: {"termination_reason": "completed"},
+            ),
         )
         evaluator.return_value.grade.return_value = SimpleNamespace(
             model_dump=lambda **_: {"overall_success": True}
@@ -88,8 +95,10 @@ class ResultArtifactPathTest(unittest.TestCase):
 
             output_path = (
                 Path(temporary_directory)
-                / "scenario-one"
-                / "provider-model-name.json"
+                / "scenario"
+                / "provider-model-name"
+                / "reasoning-default"
+                / "scenario-one.json"
             )
             saved = json.loads(output_path.read_text())
 
@@ -98,6 +107,81 @@ class ResultArtifactPathTest(unittest.TestCase):
         self.assertNotIn("seed", saved)
         self.assertIn(str(output_path), stderr.getvalue())
         self.assertEqual(json.loads(stdout.getvalue()), saved)
+
+    @patch.dict(os.environ, {"RIVER_API_KEY": "test-key"})
+    @patch("river_client.Client")
+    @patch("ci_sim.cli.RuleBasedWriteEvaluator")
+    @patch("ci_sim.cli.asyncio.run")
+    @patch("ci_sim.cli.Runner")
+    @patch("ci_sim.cli.RiverAgent")
+    @patch("ci_sim.cli.Scenario.load")
+    def test_run_accepts_a_directory_and_runs_scenarios_concurrently(
+        self,
+        load_scenario: MagicMock,
+        river_agent: MagicMock,
+        runner: MagicMock,
+        asyncio_run: MagicMock,
+        evaluator: MagicMock,
+        river_client: MagicMock,
+    ) -> None:
+        del river_client
+        scenarios = [
+            SimpleNamespace(id="scenario-one", label=object(), runtime_spec=object),
+            SimpleNamespace(id="scenario-two", label=object(), runtime_spec=object),
+        ]
+        results = tuple(
+            SimpleNamespace(
+                artifact=object(),
+                model_dump=lambda **_: {"termination_reason": "completed"},
+            )
+            for _ in scenarios
+        )
+        load_scenario.side_effect = scenarios
+        asyncio_run.return_value = results
+        evaluator.return_value.grade.return_value = SimpleNamespace(
+            model_dump=lambda **_: {"overall_success": True}
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            dataset = root / "dataset"
+            dataset.mkdir()
+            (dataset / "one.json").touch()
+            (dataset / "two.json").touch()
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                run(
+                    str(dataset),
+                    "provider/model",
+                    concurrency=2,
+                    reasoning_effort="xhigh",
+                    runs_dir=str(root / "runs"),
+                )
+
+            saved_paths = [
+                root
+                / "runs"
+                / "dataset"
+                / "provider-model"
+                / "reasoning-xhigh"
+                / f"{scenario.id}.json"
+                for scenario in scenarios
+            ]
+            all_results_saved = all(path.is_file() for path in saved_paths)
+
+        self.assertEqual(
+            runner.return_value.run.call_args.kwargs["concurrency"],
+            2,
+        )
+        self.assertEqual(
+            river_agent.call_args.kwargs["reasoning_effort"],
+            "xhigh",
+        )
+        self.assertTrue(all_results_saved)
+        self.assertEqual(
+            json.loads(stdout.getvalue()), [str(path) for path in saved_paths]
+        )
 
 
 if __name__ == "__main__":
