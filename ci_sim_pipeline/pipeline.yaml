@@ -7,6 +7,7 @@ codex:
   attempts_per_item: 3
   concurrency: 4
 
+# stage 1
 generate_ideas:
   reference_paths:
     - data_examples/gina_ellis_001_workplace_status_update_email_slack_calendar_base__pressure_anti_rumor_negation.json
@@ -22,6 +23,7 @@ generate_ideas:
     medium_scenarios: 8
   prompt_path: prompts/generate_ideas.md
 
+# stage 2
 construct_scenarios:
   input_path: outputs/ideas.json
   reference_paths:
@@ -31,6 +33,7 @@ construct_scenarios:
   checkpoint_path: outputs/construction_checkpoint.json
   prompt_path: prompts/construct_scenarios.md
 
+# stage 3
 validate_scenarios:
   input_path: outputs/scenario_candidates.json
   reference_paths:

@@ -39,12 +39,14 @@ class RiverAgent:
         max_tokens: int = 2048,
         temperature: float = 0.0,
         timeout: float = 300.0,
+        reasoning_effort: str | None = None,
     ) -> None:
         self._client = client
         self._base_model = base_model
         self._max_tokens = max_tokens
         self._temperature = temperature
         self._timeout = timeout
+        self._reasoning_effort = reasoning_effort
 
     @classmethod
     def from_env(cls, *, base_model: str, **kwargs: Any) -> RiverAgent:
@@ -70,18 +72,28 @@ class RiverAgent:
         seed: int,
     ) -> tuple[AgentTurn, AgentState]:
         state.messages.extend(tool_results)
+        request = {
+            "tools": _tools(state.runtime),
+            "max_tokens": self._max_tokens,
+            "temperature": self._temperature,
+            "seed": seed,
+        }
+        if self._reasoning_effort is not None:
+            request["chat_template_kwargs"] = {
+                "reasoning_effort": self._reasoning_effort
+            }
         result = await asyncio.to_thread(
             self._client.chat_complete,
             _messages(state.runtime, state.messages),
             base_model=self._base_model,
-            tools=_tools(state.runtime),
-            max_tokens=self._max_tokens,
-            temperature=self._temperature,
-            seed=seed,
             timeout=self._timeout,
+            **request,
         )
         if result.status_code >= 400:
-            raise RuntimeError(f"River chat completion failed ({result.status_code})")
+            raise RuntimeError(
+                f"River chat completion failed ({result.status_code}): "
+                f"{result.response_json}"
+            )
         turn = _agent_turn(result.response_json)
         state.messages.append(turn)
         return turn, state
