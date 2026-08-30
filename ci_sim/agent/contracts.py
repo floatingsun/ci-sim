@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol, TypeAlias
+from typing import Protocol
 
 from ci_sim.contracts import (
     RuntimeSpec,
@@ -17,7 +17,7 @@ class AgentTurn(StrictModel):
     tool_calls: tuple[ToolCall, ...] = ()
 
 
-TranscriptEvent: TypeAlias = AgentTurn | ToolResult
+type TranscriptEvent = AgentTurn | ToolResult
 
 
 class AgentState(StrictModel):

@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 from collections.abc import Mapping
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -83,8 +84,7 @@ def _command(
         "exec",
         "--ephemeral",
         "--ignore-user-config",
-        "--ask-for-approval",
-        "never",
+        "--ignore-rules",
         "--sandbox",
         "read-only",
         "--skip-git-repo-check",
@@ -98,9 +98,7 @@ def _command(
     if model:
         command.extend(("--model", model))
     if reasoning_effort:
-        command.extend(
-            ("--config", f'model_reasoning_effort="{reasoning_effort}"')
-        )
+        command.extend(("--config", f'model_reasoning_effort="{reasoning_effort}"'))
     command.append("-")
     return command
 
@@ -112,7 +110,7 @@ def _materialize_schema(
     if isinstance(output_schema, Mapping):
         schema_path = temporary_root / "schema.json"
         schema_path.write_text(
-            json.dumps(dict(output_schema), indent=2),
+            json.dumps(_strict_output_schema(dict(output_schema)), indent=2),
             encoding="utf-8",
         )
         return schema_path
@@ -121,3 +119,25 @@ def _materialize_schema(
     if not schema_path.is_file():
         raise FileNotFoundError(schema_path)
     return schema_path
+
+
+def _strict_output_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalize Pydantic JSON Schema for strict structured model output."""
+
+    normalized_schema = deepcopy(dict(schema))
+
+    def normalize_node(node: Any) -> None:
+        if isinstance(node, dict):
+            node.pop("default", None)
+            properties = node.get("properties")
+            if isinstance(properties, dict):
+                node["required"] = list(properties)
+                node["additionalProperties"] = False
+            for child in node.values():
+                normalize_node(child)
+        elif isinstance(node, list):
+            for child in node:
+                normalize_node(child)
+
+    normalize_node(normalized_schema)
+    return normalized_schema

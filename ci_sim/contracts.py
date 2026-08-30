@@ -30,11 +30,14 @@ class ToolResult(StrictModel):
 
 
 class WriteRecord(StrictModel):
+    """Committed tool call, including the identifier returned to the model."""
+
     sequence: int
     call_id: str
     canonical_tool: str
     model_tool: str
     arguments: dict[str, Any]
+    result_id: str | None = None
 
 
 class RunArtifact(StrictModel):

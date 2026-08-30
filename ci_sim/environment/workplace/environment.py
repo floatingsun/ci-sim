@@ -34,6 +34,7 @@ class WorkplaceEnvironment:
             return ToolResult(call_id=call.call_id, error=str(exc))
 
         sequence = len(self._writes) + 1
+        result_id = f"{tool.id_prefix}_{sequence:04d}"
         self._writes.append(
             WriteRecord(
                 sequence=sequence,
@@ -41,13 +42,14 @@ class WorkplaceEnvironment:
                 canonical_tool=tool.canonical_name,
                 model_tool=tool.model_name,
                 arguments=arguments,
+                result_id=result_id,
             )
         )
         return ToolResult(
             call_id=call.call_id,
             content={
                 "status": tool.success_status,
-                "id": f"{tool.id_prefix}_{sequence:04d}",
+                "id": result_id,
             },
         )
 

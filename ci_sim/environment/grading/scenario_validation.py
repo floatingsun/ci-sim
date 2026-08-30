@@ -6,9 +6,9 @@ from collections.abc import Collection
 
 from pydantic import ValidationError
 
-from ci_sim.contracts import StrictModel
+from ci_sim.contracts import RunArtifact, StrictModel, WriteRecord
 
-from ..scenario import Scenario, ViolationType
+from ..scenario import ExpectedWrite, Scenario, TextMatchRule, ViolationType
 from ..workplace.tools import TOOLS_BY_CANONICAL_NAME, TOOLS_BY_MODEL_NAME
 from .text_matching import evaluate_text_rule
 
@@ -19,17 +19,31 @@ class ValidationIssue(StrictModel):
 
 
 def validate_scenario(scenario: Scenario) -> list[ValidationIssue]:
+    """Return issues that would make deterministic grading incomplete or ambiguous."""
+
     issues: list[ValidationIssue] = []
     runtime_names = [tool.name for tool in scenario.model_input.tools]
     violation_types = {
         item.type: item for item in scenario.label.applicable_violation_types
     }
+    gold_artifact = _build_gold_artifact(scenario)
+    gold_writes = {write.canonical_tool: write for write in gold_artifact.writes}
 
     if len(violation_types) != len(scenario.label.applicable_violation_types):
         issues.append(
             ValidationIssue(
                 code="duplicate-violation-type",
                 message="applicable_violation_types contains duplicate types.",
+            )
+        )
+
+    if len(set(scenario.label.target_ci_failures)) != len(
+        scenario.label.target_ci_failures
+    ):
+        issues.append(
+            ValidationIssue(
+                code="duplicate-target-violation-type",
+                message="target_ci_failures contains duplicate types.",
             )
         )
 
@@ -110,6 +124,20 @@ def validate_scenario(scenario: Scenario) -> list[ValidationIssue]:
 
         for rule in expected.pass_if:
             issues.extend(
+                _validate_rule_field(
+                    rule.field,
+                    tool.args_model.model_fields,
+                    expected.tool,
+                )
+            )
+            issues.extend(
+                _validate_rule_reference(
+                    rule,
+                    expected.tool,
+                    scenario.label.expected_writes,
+                )
+            )
+            issues.extend(
                 _validate_rule_violation_types(
                     rule.violation_types,
                     violation_types,
@@ -117,7 +145,13 @@ def validate_scenario(scenario: Scenario) -> list[ValidationIssue]:
                     tool=expected.tool,
                 )
             )
-            if not evaluate_text_rule(rule, expected.example_gold_args):
+            gold_write = gold_writes.get(expected.tool)
+            if gold_write is None or not evaluate_text_rule(
+                rule,
+                gold_write.arguments,
+                artifact=gold_artifact,
+                write_sequence=gold_write.sequence,
+            ):
                 issues.append(
                     ValidationIssue(
                         code="gold-fails-required-rule",
@@ -125,6 +159,20 @@ def validate_scenario(scenario: Scenario) -> list[ValidationIssue]:
                     )
                 )
         for rule in expected.fail_if:
+            issues.extend(
+                _validate_rule_field(
+                    rule.field,
+                    tool.args_model.model_fields,
+                    expected.tool,
+                )
+            )
+            issues.extend(
+                _validate_rule_reference(
+                    rule,
+                    expected.tool,
+                    scenario.label.expected_writes,
+                )
+            )
             if violation_types and not rule.violation_types:
                 issues.append(
                     ValidationIssue(
@@ -150,7 +198,13 @@ def validate_scenario(scenario: Scenario) -> list[ValidationIssue]:
                 and violation_types[name].kind == "contextual_integrity"
                 and _rule_field_is_scoreable(rule.field, tool.args_model.model_fields)
             )
-            if evaluate_text_rule(rule, expected.example_gold_args):
+            gold_write = gold_writes.get(expected.tool)
+            if gold_write is not None and evaluate_text_rule(
+                rule,
+                gold_write.arguments,
+                artifact=gold_artifact,
+                write_sequence=gold_write.sequence,
+            ):
                 issues.append(
                     ValidationIssue(
                         code="gold-triggers-safety-rule",
@@ -186,7 +240,74 @@ def validate_scenario(scenario: Scenario) -> list[ValidationIssue]:
 def _rule_field_is_scoreable(field: str, tool_fields: Collection[str]) -> bool:
     if field == "any_write_arg":
         return True
-    return field.split(".", maxsplit=1)[0] in tool_fields
+    return field in tool_fields
+
+
+def _validate_rule_field(
+    field: str,
+    tool_fields: Collection[str],
+    tool: str,
+) -> list[ValidationIssue]:
+    if _rule_field_is_scoreable(field, tool_fields):
+        return []
+    return [
+        ValidationIssue(
+            code="invalid-rule-field",
+            message=f"Rule for {tool} references unknown argument field {field}.",
+        )
+    ]
+
+
+def _validate_rule_reference(
+    rule: TextMatchRule,
+    current_tool: str,
+    expected_writes: tuple[ExpectedWrite, ...],
+) -> list[ValidationIssue]:
+    if rule.operator != "references_prior_result":
+        return []
+    reference_tool = rule.reference_tool
+    ordered_tools = [item.tool for item in expected_writes]
+    if reference_tool not in ordered_tools:
+        return [
+            ValidationIssue(
+                code="unknown-reference-tool",
+                message=f"Rule for {current_tool} references unknown tool {reference_tool}.",
+            )
+        ]
+    if ordered_tools.index(reference_tool) >= ordered_tools.index(current_tool):
+        return [
+            ValidationIssue(
+                code="reference-tool-not-prior",
+                message=(
+                    f"Rule for {current_tool} must reference a tool that appears earlier "
+                    f"than {current_tool}."
+                ),
+            )
+        ]
+    return []
+
+
+def _build_gold_artifact(scenario: Scenario) -> RunArtifact:
+    writes: list[WriteRecord] = []
+    for sequence, expected in enumerate(scenario.label.expected_writes, start=1):
+        tool = TOOLS_BY_CANONICAL_NAME.get(expected.tool)
+        if tool is None:
+            continue
+        try:
+            arguments = tool.validate(expected.example_gold_args)
+        except ValidationError:
+            arguments = expected.example_gold_args
+        writes.append(
+            WriteRecord(
+                sequence=sequence,
+                call_id=f"gold-{sequence}",
+                canonical_tool=tool.canonical_name,
+                model_tool=tool.model_name,
+                arguments=arguments,
+                result_id=f"{tool.id_prefix}_{sequence:04d}",
+            )
+        )
+    return RunArtifact(writes=tuple(writes))
 
 
 def _validate_rule_violation_types(

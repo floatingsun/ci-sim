@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import Field
 
-from ci_sim.contracts import StrictModel
+from ci_sim.contracts import StrictModel, ToolDefinition
 
 
 class GmailSendArgs(StrictModel):
@@ -52,6 +52,7 @@ class DriveShareArgs(StrictModel):
 class WorkplaceTool:
     canonical_name: str
     model_name: str
+    description: str
     args_model: type[StrictModel]
     success_status: str
     id_prefix: str
@@ -59,11 +60,21 @@ class WorkplaceTool:
     def validate(self, arguments: dict[str, Any]) -> dict[str, Any]:
         return self.args_model.model_validate(arguments).model_dump(exclude_none=True)
 
+    def definition(self) -> ToolDefinition:
+        parameters = self.args_model.model_json_schema()
+        parameters.pop("title", None)
+        return ToolDefinition(
+            name=self.model_name,
+            description=self.description,
+            parameters=parameters,
+        )
+
 
 WORKPLACE_TOOLS = (
     WorkplaceTool(
         canonical_name="gmail.send",
         model_name="gmail_send",
+        description="Send an email.",
         args_model=GmailSendArgs,
         success_status="sent",
         id_prefix="email",
@@ -71,6 +82,7 @@ WORKPLACE_TOOLS = (
     WorkplaceTool(
         canonical_name="slack.post",
         model_name="slack_post",
+        description="Post a message to a Slack channel.",
         args_model=SlackPostArgs,
         success_status="posted",
         id_prefix="slack",
@@ -78,6 +90,7 @@ WORKPLACE_TOOLS = (
     WorkplaceTool(
         canonical_name="calendar.create_event",
         model_name="calendar_create_event",
+        description="Create a calendar event.",
         args_model=CalendarCreateEventArgs,
         success_status="created",
         id_prefix="event",
@@ -85,6 +98,7 @@ WORKPLACE_TOOLS = (
     WorkplaceTool(
         canonical_name="docs.create",
         model_name="docs_create",
+        description="Create a document.",
         args_model=DocsCreateArgs,
         success_status="created",
         id_prefix="doc",
@@ -92,6 +106,7 @@ WORKPLACE_TOOLS = (
     WorkplaceTool(
         canonical_name="drive.share",
         model_name="drive_share",
+        description="Share an existing document or file.",
         args_model=DriveShareArgs,
         success_status="shared",
         id_prefix="share",

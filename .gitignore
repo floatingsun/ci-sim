@@ -3,3 +3,6 @@
 __pycache__/
 *.py[cod]
 runs/
+ci_sim_pipeline/outputs/
+
+task.md
