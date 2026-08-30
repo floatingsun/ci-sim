@@ -35,17 +35,20 @@ def _default_output_path(
     *,
     scenario_group: str,
     reasoning_effort: str | None,
+    thinking: bool | None = None,
     runs_dir: str | Path = DEFAULT_RUNS_DIR,
 ) -> Path:
     """Build the conventional path for a saved run result."""
 
-    return (
+    path = (
         Path(runs_dir)
         / _safe_path_component(scenario_group)
         / _safe_path_component(model)
         / f"reasoning-{_safe_path_component(reasoning_effort or 'default')}"
-        / f"{_safe_path_component(scenario_id)}.json"
     )
+    if thinking is not None:
+        path /= f"thinking-{'enabled' if thinking else 'disabled'}"
+    return path / f"{_safe_path_component(scenario_id)}.json"
 
 
 def _write_json_atomic(payload: dict[str, Any], output_path: Path) -> None:
@@ -95,6 +98,7 @@ def run(
     temperature: float = 0.0,
     timeout: float = 300.0,
     reasoning_effort: str | None = None,
+    thinking: bool | None = None,
     concurrency: int = 4,
     repetitions: int = 1,
     output: str | None = None,
@@ -138,6 +142,7 @@ def run(
             temperature=temperature,
             timeout=timeout,
             reasoning_effort=reasoning_effort,
+            thinking=thinking,
         )
         runner = Runner(
             build_workplace_environment,
@@ -166,6 +171,7 @@ def run(
                 "scenario_id": scenario.id,
                 "model": model,
                 "reasoning_effort": reasoning_effort,
+                "thinking": thinking,
                 "result": result.model_dump(mode="json"),
                 "grade": grade.model_dump(mode="json"),
             }
@@ -179,6 +185,7 @@ def run(
                     model,
                     scenario_group=scenario_group,
                     reasoning_effort=reasoning_effort,
+                    thinking=thinking,
                     runs_dir=runs_dir,
                 )
             )

@@ -105,6 +105,29 @@ class TypedViolationScoringTest(unittest.TestCase):
         self.assertTrue(direct.triggered)
         self.assertEqual(len(direct.evidence_check_ids), 2)
 
+        field_scores = {
+            (score.tool, score.field): score
+            for score in grade.field_violation_scores
+        }
+        body = field_scores[("gmail.send", "body")]
+        self.assertEqual(body.violation_rate, 1 / 2)
+        self.assertEqual(
+            body.applicable_violation_types,
+            (
+                "SENSITIVE_DIRECT_DISCLOSURE",
+                "SENSITIVE_NEGATED_DISCLOSURE",
+            ),
+        )
+        self.assertEqual(
+            body.violated_violation_types,
+            ("SENSITIVE_DIRECT_DISCLOSURE",),
+        )
+        self.assertEqual(len(body.evidence_check_ids), 2)
+        self.assertEqual(
+            field_scores[("gmail.send", "to")].violation_rate,
+            0.0,
+        )
+
     def test_clean_write_has_zero_violation_rate(self) -> None:
         grade = RuleBasedWriteEvaluator().grade(
             self.label,
@@ -117,6 +140,10 @@ class TypedViolationScoringTest(unittest.TestCase):
         self.assertEqual(grade.task_completeness, 1.0)
         self.assertEqual(grade.ci_violation_rate, 0.0)
         self.assertEqual(grade.violated_violation_types, [])
+        self.assertTrue(grade.field_violation_scores)
+        self.assertTrue(
+            all(score.violation_rate == 0.0 for score in grade.field_violation_scores)
+        )
         self.assertTrue(grade.task_success)
         self.assertTrue(grade.overall_success)
         self.assertNotIn("utility_coverage", grade.model_dump())

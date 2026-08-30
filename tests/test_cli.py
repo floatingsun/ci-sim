@@ -36,6 +36,24 @@ class ResultArtifactPathTest(unittest.TestCase):
             ),
         )
 
+    def test_thinking_mode_is_included_in_the_output_path(self) -> None:
+        path = _default_output_path(
+            "scenario-one",
+            "deepseek-ai/DeepSeek-V4-Flash-0731",
+            scenario_group="dataset",
+            reasoning_effort=None,
+            thinking=True,
+            runs_dir="runs",
+        )
+
+        self.assertEqual(
+            path,
+            Path(
+                "runs/dataset/deepseek-ai-DeepSeek-V4-Flash-0731/"
+                "reasoning-default/thinking-enabled/scenario-one.json"
+            ),
+        )
+
     def test_path_components_cannot_escape_the_runs_directory(self) -> None:
         self.assertEqual(_safe_path_component("../../"), "unnamed")
         self.assertEqual(_safe_path_component("../scenario/name"), "scenario-name")
@@ -156,6 +174,7 @@ class ResultArtifactPathTest(unittest.TestCase):
                     "provider/model",
                     concurrency=2,
                     reasoning_effort="xhigh",
+                    thinking=True,
                     runs_dir=str(root / "runs"),
                 )
 
@@ -165,6 +184,7 @@ class ResultArtifactPathTest(unittest.TestCase):
                 / "dataset"
                 / "provider-model"
                 / "reasoning-xhigh"
+                / "thinking-enabled"
                 / f"{scenario.id}.json"
                 for scenario in scenarios
             ]
@@ -178,6 +198,7 @@ class ResultArtifactPathTest(unittest.TestCase):
             river_agent.call_args.kwargs["reasoning_effort"],
             "xhigh",
         )
+        self.assertIs(river_agent.call_args.kwargs["thinking"], True)
         self.assertTrue(all_results_saved)
         self.assertEqual(
             json.loads(stdout.getvalue()), [str(path) for path in saved_paths]

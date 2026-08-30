@@ -40,6 +40,7 @@ class RiverAgent:
         temperature: float = 0.0,
         timeout: float = 300.0,
         reasoning_effort: str | None = None,
+        thinking: bool | None = None,
     ) -> None:
         self._client = client
         self._base_model = base_model
@@ -47,6 +48,7 @@ class RiverAgent:
         self._temperature = temperature
         self._timeout = timeout
         self._reasoning_effort = reasoning_effort
+        self._thinking = thinking
 
     @classmethod
     def from_env(cls, *, base_model: str, **kwargs: Any) -> RiverAgent:
@@ -78,10 +80,13 @@ class RiverAgent:
             "temperature": self._temperature,
             "seed": seed,
         }
+        chat_template_kwargs: dict[str, Any] = {}
         if self._reasoning_effort is not None:
-            request["chat_template_kwargs"] = {
-                "reasoning_effort": self._reasoning_effort
-            }
+            chat_template_kwargs["reasoning_effort"] = self._reasoning_effort
+        if self._thinking is not None:
+            chat_template_kwargs["thinking"] = self._thinking
+        if chat_template_kwargs:
+            request["chat_template_kwargs"] = chat_template_kwargs
         result = await asyncio.to_thread(
             self._client.chat_complete,
             _messages(state.runtime, state.messages),

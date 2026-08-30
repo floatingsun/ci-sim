@@ -2,8 +2,40 @@ from __future__ import annotations
 
 import json
 import unittest
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
-from ci_sim.agent.river import _agent_turn
+from ci_sim.agent.river import RiverAgent, _agent_turn
+from ci_sim.contracts import RuntimeSpec
+
+
+class RiverAgentRequestTest(unittest.IsolatedAsyncioTestCase):
+    async def test_sends_thinking_chat_template_kwarg(self) -> None:
+        client = MagicMock()
+        client.chat_complete.return_value = SimpleNamespace(
+            response_json=json.dumps(
+                {"choices": [{"message": {"content": "Done."}}]}
+            ),
+            status_code=200,
+        )
+        agent = RiverAgent(
+            client,
+            base_model="deepseek-ai/DeepSeek-V4-Flash-0731",
+            thinking=True,
+        )
+        runtime = RuntimeSpec(
+            scenario_id="scenario-one",
+            system="System",
+            user="User",
+            tools=(),
+        )
+
+        await agent.respond((), agent.get_init_state(runtime), seed=0)
+
+        self.assertEqual(
+            client.chat_complete.call_args.kwargs["chat_template_kwargs"],
+            {"thinking": True},
+        )
 
 
 class RiverAgentTurnTest(unittest.TestCase):
