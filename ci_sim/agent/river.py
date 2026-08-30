@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from ci_sim.contracts import RuntimeSpec, ToolCall, ToolResult
 
-from .contracts import AgentState, AgentTurn, TranscriptEvent
+from .contracts import AgentState, AgentTurn, TokenUsage, TranscriptEvent
 
 
 class _ChatResult(Protocol):
@@ -174,7 +174,42 @@ def _agent_turn(response_json: str) -> AgentTurn:
         )
         for call in tool_call_payloads
     )
-    return AgentTurn(content=content, tool_calls=tool_calls)
+    return AgentTurn(
+        content=content,
+        tool_calls=tool_calls,
+        usage=_parse_token_usage(response.get("usage")),
+    )
+
+
+def _parse_token_usage(raw_usage: Any) -> TokenUsage | None:
+    if not isinstance(raw_usage, dict):
+        return None
+
+    input_tokens = _token_count(raw_usage, "prompt_tokens")
+    output_tokens = _token_count(raw_usage, "completion_tokens")
+    total_tokens = _token_count(raw_usage, "total_tokens")
+    if total_tokens == 0:
+        total_tokens = input_tokens + output_tokens
+
+    input_details = raw_usage.get("prompt_tokens_details")
+    output_details = raw_usage.get("completion_tokens_details")
+    return TokenUsage(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=total_tokens,
+        cached_input_tokens=_token_count(input_details, "cached_tokens"),
+        reasoning_tokens=_token_count(output_details, "reasoning_tokens"),
+        provider_usage=raw_usage,
+    )
+
+
+def _token_count(values: Any, key: str) -> int:
+    if not isinstance(values, dict):
+        return 0
+    value = values.get(key)
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return 0
 
 
 def _parse_xml_tool_calls(

@@ -6,7 +6,9 @@ import asyncio
 from collections.abc import Callable, Iterable
 from typing import Literal
 
-from ci_sim.agent import Agent, TranscriptEvent
+from pydantic import Field
+
+from ci_sim.agent import Agent, AgentTurn, TokenUsage, TranscriptEvent
 from ci_sim.contracts import RunArtifact, RuntimeSpec, StrictModel, ToolResult
 from ci_sim.environment import Environment
 
@@ -16,6 +18,22 @@ class RunResult(StrictModel):
     events: tuple[TranscriptEvent, ...]
     artifact: RunArtifact
     termination_reason: Literal["completed", "max_tool_rounds"]
+    usage: TokenUsage = Field(default_factory=TokenUsage)
+
+
+def _aggregate_token_usage(events: Iterable[TranscriptEvent]) -> TokenUsage:
+    usages = [
+        event.usage
+        for event in events
+        if isinstance(event, AgentTurn) and event.usage is not None
+    ]
+    return TokenUsage(
+        input_tokens=sum(usage.input_tokens for usage in usages),
+        output_tokens=sum(usage.output_tokens for usage in usages),
+        total_tokens=sum(usage.total_tokens for usage in usages),
+        cached_input_tokens=sum(usage.cached_input_tokens for usage in usages),
+        reasoning_tokens=sum(usage.reasoning_tokens for usage in usages),
+    )
 
 
 class Runner:
@@ -51,6 +69,7 @@ class Runner:
                     events=tuple(events),
                     artifact=environment.artifact(),
                     termination_reason="completed",
+                    usage=_aggregate_token_usage(events),
                 )
             tool_results = tuple(environment.execute(call) for call in turn.tool_calls)
             events.extend(tool_results)
@@ -60,6 +79,7 @@ class Runner:
             events=tuple(events),
             artifact=environment.artifact(),
             termination_reason="max_tool_rounds",
+            usage=_aggregate_token_usage(events),
         )
 
     async def run(

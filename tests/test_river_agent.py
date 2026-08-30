@@ -23,7 +23,14 @@ class RiverAgentTurnTest(unittest.TestCase):
                         )
                     }
                 }
-            ]
+            ],
+            "usage": {
+                "prompt_tokens": 120,
+                "completion_tokens": 30,
+                "total_tokens": 150,
+                "prompt_tokens_details": {"cached_tokens": 20},
+                "completion_tokens_details": {"reasoning_tokens": 10},
+            },
         }
 
         turn = _agent_turn(json.dumps(response))
@@ -36,6 +43,14 @@ class RiverAgentTurnTest(unittest.TestCase):
             turn.tool_calls[0].arguments,
             {"title": "Test brief", "body": "Approved body"},
         )
+        self.assertIsNotNone(turn.usage)
+        assert turn.usage is not None
+        self.assertEqual(turn.usage.input_tokens, 120)
+        self.assertEqual(turn.usage.output_tokens, 30)
+        self.assertEqual(turn.usage.total_tokens, 150)
+        self.assertEqual(turn.usage.cached_input_tokens, 20)
+        self.assertEqual(turn.usage.reasoning_tokens, 10)
+        self.assertEqual(turn.usage.provider_usage, response["usage"])
 
     def test_prefers_structured_tool_calls_from_chat_completion(self) -> None:
         response = {
@@ -65,6 +80,7 @@ class RiverAgentTurnTest(unittest.TestCase):
         self.assertEqual(turn.content, "Keep this content.")
         self.assertEqual(turn.tool_calls[0].call_id, "call_123")
         self.assertEqual(turn.tool_calls[0].name, "slack_post")
+        self.assertIsNone(turn.usage)
 
 
 if __name__ == "__main__":
